@@ -1,70 +1,379 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ggwave Acoustic App</title>
-    <link rel="manifest" href="manifest.json">
-    <script src="https://ggwave.ggerganov.com/ggwave.js"></script>
-    <style>
-        body { font-family: system-ui, -apple-system, sans-serif; padding: 20px; max-width: 480px; margin: 0 auto; background-color: #f9f9f9; }
-        button, input { width: 100%; padding: 12px; margin: 8px 0; font-size: 16px; box-sizing: border-box; border-radius: 6px; }
-        button { background-color: #007bff; color: white; border: none; font-weight: bold; cursor: pointer; }
-        button:active { background-color: #0056b3; }
-        input { border: 1px solid #ccc; }
-        .card { border: 1px solid #e0e0e0; background: white; padding: 16px; border-radius: 8px; margin-bottom: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-        #output { font-weight: bold; color: #28a745; word-break: break-all; }
-        #status { font-size: 14px; color: #666; margin-top: 5px; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sound Messenger — data over sound (ggwave)</title>
+<style>
+  :root{
+    --bg: #0b1015;
+    --panel: #121a22;
+    --line: #223140;
+    --text: #e7eef4;
+    --dim: #8aa0b2;
+    --accent: #5eead4;
+    --accent-dim: #245c52;
+    --warn: #f5a35e;
+    --bad: #f27878;
+  }
+  *{ box-sizing: border-box; }
+  body{
+    margin:0;
+    background: radial-gradient(1200px 600px at 50% -10%, #16222c 0%, var(--bg) 60%);
+    color: var(--text);
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    min-height:100vh;
+    display:flex;
+    justify-content:center;
+    padding: 32px 16px 64px;
+  }
+  .wrap{ width:100%; max-width: 640px; }
+  header{ margin-bottom: 24px; }
+  h1{
+    font-size: 20px;
+    letter-spacing: 0.04em;
+    margin: 0 0 4px;
+    display:flex; align-items:center; gap:10px;
+  }
+  h1 .dot{ width:8px; height:8px; border-radius:50%; background:var(--accent); box-shadow:0 0 8px var(--accent); }
+  header p{ color:var(--dim); margin:0; font-size:13px; }
+
+  .panel{
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px;
+    margin-bottom: 16px;
+  }
+  .panel h2{
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--dim);
+    margin: 0 0 12px;
+  }
+
+  textarea{
+    width:100%;
+    background:#0d151b;
+    border:1px solid var(--line);
+    border-radius:6px;
+    color:var(--text);
+    padding:10px;
+    font-family:inherit;
+    font-size:14px;
+    resize:vertical;
+    min-height:64px;
+  }
+  textarea:focus, select:focus, button:focus{ outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  .row{ display:flex; gap:10px; margin-top:12px; flex-wrap:wrap; align-items:center; }
+  .row label{ font-size:12px; color:var(--dim); display:flex; flex-direction:column; gap:4px; }
+
+  select, input[type=range]{ font-family:inherit; }
+  select{
+    background:#0d151b; color:var(--text); border:1px solid var(--line);
+    border-radius:6px; padding:6px 8px; font-size:13px;
+  }
+
+  button{
+    font-family:inherit;
+    font-size:13px;
+    border-radius:6px;
+    padding:9px 16px;
+    border:1px solid var(--line);
+    background:#0d151b;
+    color:var(--text);
+    cursor:pointer;
+    transition: border-color .15s, color .15s;
+  }
+  button:hover{ border-color: var(--accent); color:var(--accent); }
+  button:disabled{ opacity:.4; cursor:not-allowed; }
+  button.primary{ background: var(--accent-dim); border-color: var(--accent); color:#d9fff8; }
+  button.primary:hover{ color:#fff; }
+  button.stop{ border-color: var(--bad); color:var(--bad); }
+
+  .mic-status{
+    display:flex; align-items:center; gap:8px;
+    font-size:12px; color:var(--dim); margin-top:12px;
+  }
+  .mic-status .led{ width:9px; height:9px; border-radius:50%; background:#48607a; flex:none; }
+  .mic-status.granted .led{ background:var(--accent); box-shadow:0 0 6px var(--accent); }
+  .mic-status.denied .led{ background:var(--bad); box-shadow:0 0 6px var(--bad); }
+  .mic-status.pending .led{ background:var(--warn); animation:pulse 1s infinite; }
+  @keyframes pulse{ 50%{ opacity:.3; } }
+
+  .log{
+    max-height: 260px;
+    overflow-y:auto;
+    display:flex; flex-direction:column; gap:8px;
+  }
+  .msg{
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:8px 10px;
+    font-size:13px;
+    line-height:1.4;
+    word-break:break-word;
+  }
+  .msg.tx{ border-left:3px solid var(--accent); }
+  .msg.rx{ border-left:3px solid var(--warn); }
+  .msg .meta{ color:var(--dim); font-size:11px; margin-bottom:3px; }
+  .empty{ color:var(--dim); font-size:12px; font-style:italic; }
+
+  footer{ color:var(--dim); font-size:11px; text-align:center; margin-top:24px; }
+  footer a{ color:var(--accent); }
+</style>
 </head>
 <body>
+<div class="wrap">
 
-    <h2>ggwave Near-Ultrasonic Demo</h2>
+  <header>
+    <h1><span class="dot"></span> Sound Messenger</h1>
+    <p>Send and receive short text messages encoded as sound, powered by <a href="https://github.com/ggerganov/ggwave" style="color:var(--accent)">ggwave</a>. No server, no internet — just speakers and a microphone.</p>
+  </header>
 
-    <div class="card">
-        <h3>1. Send Message</h3>
-        <input type="text" id="txText" value="Hello 123" placeholder="Enter message">
-        <button onclick="sendMessage()">🔊 Send Sound</button>
+  <div class="panel" id="statusPanel">
+    <h2>Engine</h2>
+    <div id="engineStatus">Loading ggwave…</div>
+  </div>
+
+  <div class="panel">
+    <h2>Transmit</h2>
+    <textarea id="txData" maxlength="140" placeholder="Type a short message…">Hello from ggwave!</textarea>
+    <div class="row">
+      <label>Protocol
+        <select id="protocol"></select>
+      </label>
+      <label>Volume
+        <input type="range" id="volume" min="1" max="100" value="25">
+      </label>
+      <button class="primary" id="sendBtn" disabled>▶ Send</button>
     </div>
+  </div>
 
-    <div class="card">
-        <h3>2. Receive Message</h3>
-        <button onclick="initReceiver()">🎙️ Start Listening</button>
-        <p>Status: <span id="status">Idle</span></p>
-        <p>Received: <span id="output">Waiting for input...</span></p>
+  <div class="panel">
+    <h2>Receive</h2>
+    <button id="listenBtn" disabled>🎙 Start listening</button>
+    <div class="mic-status" id="micStatus">
+      <span class="led"></span>
+      <span id="micStatusText">Microphone not requested yet</span>
     </div>
+  </div>
 
-    <script>
-        let ggwaveInstance = null;
-        let audioCtx = null;
+  <div class="panel">
+    <h2>Message log</h2>
+    <div class="log" id="log">
+      <div class="empty">Nothing yet — send or receive a message to see it here.</div>
+    </div>
+  </div>
 
-        function getAudioContext() {
-            if (!audioCtx) {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
-            }
-            if (audioCtx.state === 'suspended') {
-                audioCtx.resume();
-            }
-            return audioCtx;
+  <footer>Runs entirely client-side. Works best when both devices are in the same quiet room, volume around 30–50%.</footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/ggwave@0.4.0/ggwave.js"></script>
+<script>
+(function () {
+  window.AudioContext = window.AudioContext || window.webkitAudioContext;
+
+  const engineStatusEl = document.getElementById('engineStatus');
+  const sendBtn        = document.getElementById('sendBtn');
+  const listenBtn      = document.getElementById('listenBtn');
+  const txData         = document.getElementById('txData');
+  const protocolSel    = document.getElementById('protocol');
+  const volumeSlider   = document.getElementById('volume');
+  const logEl          = document.getElementById('log');
+  const micStatusWrap  = document.getElementById('micStatus');
+  const micStatusText  = document.getElementById('micStatusText');
+
+  let ggwave = null;
+  let parameters = null;
+  let instance = null;
+  let audioCtx = null;
+  let mediaStream = null;
+  let recorderNode = null;
+  let listening = false;
+
+  // ---- helpers -----------------------------------------------------
+
+  function convertTypedArray(src, type) {
+    const buffer = new ArrayBuffer(src.byteLength);
+    new src.constructor(buffer).set(src);
+    return new type(buffer);
+  }
+
+  function addLogEntry(kind, text) {
+    document.querySelectorAll('.empty').forEach(e => e.remove());
+    const div = document.createElement('div');
+    div.className = 'msg ' + kind;
+    const time = new Date().toLocaleTimeString();
+    div.innerHTML = `<div class="meta">${kind === 'tx' ? 'Sent' : 'Received'} · ${time}</div>${escapeHtml(text)}`;
+    logEl.prepend(div);
+  }
+
+  function escapeHtml(str) {
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+  }
+
+  function setMicStatus(state, text) {
+    micStatusWrap.className = 'mic-status ' + state;
+    micStatusText.textContent = text;
+  }
+
+  function ensureAudioContext() {
+    if (!audioCtx) {
+      audioCtx = new AudioContext({ sampleRate: 48000 });
+      parameters = ggwave.getDefaultParameters();
+      parameters.sampleRateInp = audioCtx.sampleRate;
+      parameters.sampleRateOut = audioCtx.sampleRate;
+      instance = ggwave.init(parameters);
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  }
+
+  // ---- init ggwave ---------------------------------------------------
+
+  ggwave_factory().then(function (obj) {
+    ggwave = obj;
+
+    // populate protocol dropdown from ggwave.ProtocolId
+    const protocols = [
+      ['GGWAVE_PROTOCOL_AUDIBLE_NORMAL',   'Audible — Normal'],
+      ['GGWAVE_PROTOCOL_AUDIBLE_FAST',     'Audible — Fast'],
+      ['GGWAVE_PROTOCOL_AUDIBLE_FASTEST',  'Audible — Fastest'],
+      ['GGWAVE_PROTOCOL_ULTRASOUND_NORMAL','Ultrasound — Normal'],
+      ['GGWAVE_PROTOCOL_ULTRASOUND_FAST',  'Ultrasound — Fast'],
+      ['GGWAVE_PROTOCOL_ULTRASOUND_FASTEST','Ultrasound — Fastest'],
+    ];
+    protocols.forEach(([key, label]) => {
+      if (ggwave.ProtocolId[key] !== undefined) {
+        const opt = document.createElement('option');
+        opt.value = key;
+        opt.textContent = label;
+        protocolSel.appendChild(opt);
+      }
+    });
+    protocolSel.value = 'GGWAVE_PROTOCOL_AUDIBLE_FAST';
+
+    engineStatusEl.textContent = 'Ready';
+    sendBtn.disabled = false;
+    listenBtn.disabled = false;
+    setMicStatus('', 'Microphone not requested yet — click "Start listening" to enable it');
+  }).catch(function (err) {
+    console.error(err);
+    engineStatusEl.textContent = 'Failed to load ggwave: ' + err.message;
+  });
+
+  // ---- transmit --------------------------------------------------------
+
+  sendBtn.addEventListener('click', function () {
+    const text = txData.value.trim();
+    if (!text) return;
+
+    ensureAudioContext();
+
+    const protocolKey = protocolSel.value;
+    const volume = parseInt(volumeSlider.value, 10);
+
+    const waveform = ggwave.encode(
+      instance,
+      text,
+      ggwave.ProtocolId[protocolKey],
+      volume
+    );
+
+    const buf = convertTypedArray(waveform, Float32Array);
+    const buffer = audioCtx.createBuffer(1, buf.length, audioCtx.sampleRate);
+    buffer.getChannelData(0).set(buf);
+
+    const source = audioCtx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(audioCtx.destination);
+    source.start(0);
+
+    addLogEntry('tx', text);
+  });
+
+  // ---- receive -----------------------------------------------------
+
+  listenBtn.addEventListener('click', function () {
+    if (listening) {
+      stopListening();
+    } else {
+      startListening();
+    }
+  });
+
+  function startListening() {
+    ensureAudioContext();
+    setMicStatus('pending', 'Requesting microphone access…');
+
+    const constraints = {
+      audio: {
+        echoCancellation: false,
+        autoGainControl: false,
+        noiseSuppression: false
+      }
+    };
+
+    navigator.mediaDevices.getUserMedia(constraints).then(function (stream) {
+      mediaStream = stream;
+      setMicStatus('granted', 'Microphone enabled — listening for messages');
+
+      const micSource = audioCtx.createMediaStreamSource(stream);
+      const bufferSize = 1024;
+
+      recorderNode = audioCtx.createScriptProcessor
+        ? audioCtx.createScriptProcessor(bufferSize, 1, 1)
+        : audioCtx.createJavaScriptNode(bufferSize, 1, 1);
+
+      recorderNode.onaudioprocess = function (e) {
+        const samples = e.inputBuffer.getChannelData(0);
+        const result = ggwave.decode(
+          instance,
+          convertTypedArray(new Float32Array(samples), Int8Array)
+        );
+        if (result && result.length > 0) {
+          const text = new TextDecoder('utf-8').decode(result);
+          if (text.trim().length > 0) addLogEntry('rx', text);
         }
+      };
 
-        // --- TRANSMITTER ---
-        async function sendMessage() {
-            const ctx = getAudioContext();
-            
-            try {
-                if (!ggwaveInstance) {
-                    document.getElementById('status').innerText = "Loading engine...";
-                    ggwaveInstance = await ggwaveFactory();
-                }
+      micSource.connect(recorderNode);
+      recorderNode.connect(audioCtx.destination);
+      recorderNode._micSource = micSource;
 
-                const text = document.getElementById('txText').value;
-                if (!text) return;
+      listening = true;
+      listenBtn.textContent = '⏹ Stop listening';
+      listenBtn.classList.add('stop');
+    }).catch(function (err) {
+      console.error(err);
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setMicStatus('denied', 'Microphone access denied — enable it in your browser\'s site settings and try again');
+      } else {
+        setMicStatus('denied', 'Could not access microphone: ' + err.message);
+      }
+    });
+  }
 
-                const protocolId = 2; // Near-Ultrasonic Fast (~18-20 kHz)
-                const waveform = ggwaveInstance.encode(text, protocolId, 10);
-
-                const buf = ctx.createBuffer(1, waveform.length, ctx.sampleRate);
-                buf.getChannelData(0).set(waveform);
-                
-                const source = ctx.
+  function stopListening() {
+    if (recorderNode) {
+      recorderNode.disconnect(audioCtx.destination);
+      if (recorderNode._micSource) recorderNode._micSource.disconnect(recorderNode);
+      recorderNode = null;
+    }
+    if (mediaStream) {
+      mediaStream.getTracks().forEach(t => t.stop());
+      mediaStream = null;
+    }
+    listening = false;
+    listenBtn.textContent = '🎙 Start listening';
+    listenBtn.classList.remove('stop');
+    setMicStatus('', 'Microphone off — click "Start listening" to enable it again');
+  }
+})();
+</script>
+</body>
+</html>
