@@ -7,10 +7,14 @@
     <link rel="manifest" href="manifest.json">
     <script src="https://ggwave.ggerganov.com/ggwave.js"></script>
     <style>
-        body { font-family: system-ui, sans-serif; padding: 20px; max-width: 480px; margin: 0 auto; }
-        button, input { width: 100%; padding: 12px; margin: 8px 0; font-size: 16px; box-sizing: border-box; }
-        .card { border: 1px solid #ddd; padding: 16px; border-radius: 8px; margin-bottom: 16px; }
-        #output { font-weight: bold; color: #007bff; word-break: break-all; }
+        body { font-family: system-ui, -apple-system, sans-serif; padding: 20px; max-width: 480px; margin: 0 auto; background-color: #f9f9f9; }
+        button, input { width: 100%; padding: 12px; margin: 8px 0; font-size: 16px; box-sizing: border-box; border-radius: 6px; }
+        button { background-color: #007bff; color: white; border: none; font-weight: bold; cursor: pointer; }
+        button:active { background-color: #0056b3; }
+        input { border: 1px solid #ccc; }
+        .card { border: 1px solid #e0e0e0; background: white; padding: 16px; border-radius: 8px; margin-bottom: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        #output { font-weight: bold; color: #28a745; word-break: break-all; }
+        #status { font-size: 14px; color: #666; margin-top: 5px; }
     </style>
 </head>
 <body>
@@ -26,7 +30,8 @@
     <div class="card">
         <h3>2. Receive Message</h3>
         <button onclick="initReceiver()">🎙️ Start Listening</button>
-        <p>Received: <span id="output">Waiting...</span></p>
+        <p>Status: <span id="status">Idle</span></p>
+        <p>Received: <span id="output">Waiting for input...</span></p>
     </div>
 
     <script>
@@ -37,55 +42,29 @@
             if (!audioCtx) {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
             }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
             return audioCtx;
         }
 
+        // --- TRANSMITTER ---
         async function sendMessage() {
             const ctx = getAudioContext();
-            if (!ggwaveInstance) ggwaveInstance = await ggwaveFactory();
-
-            const text = document.getElementById('txText').value;
-            if (!text) return;
-
-            const protocolId = 2; // Near-Ultrasonic Fast (~18-20 kHz)
-            const waveform = ggwaveInstance.encode(text, protocolId, 10);
-
-            const buf = ctx.createBuffer(1, waveform.length, ctx.sampleRate);
-            buf.getChannelData(0).set(waveform);
             
-            const source = ctx.createBufferSource();
-            source.buffer = buf;
-            source.connect(ctx.destination);
-            source.start();
-        }
-
-        async function initReceiver() {
-            const ctx = getAudioContext();
-            if (!ggwaveInstance) ggwaveInstance = await ggwaveFactory();
-
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                const source = ctx.createMediaStreamSource(stream);
-                const processor = ctx.createScriptProcessor(1024, 1, 1);
+                if (!ggwaveInstance) {
+                    document.getElementById('status').innerText = "Loading engine...";
+                    ggwaveInstance = await ggwaveFactory();
+                }
 
-                const instance = ggwaveInstance.init({ sampleRate: ctx.sampleRate });
+                const text = document.getElementById('txText').value;
+                if (!text) return;
 
-                processor.onaudioprocess = (e) => {
-                    const inputData = e.inputBuffer.getChannelData(0);
-                    const res = ggwaveInstance.decode(instance, inputData);
-                    if (res && res.length > 0) {
-                        const decodedText = new TextDecoder().decode(res);
-                        document.getElementById('output').innerText = decodedText;
-                    }
-                };
+                const protocolId = 2; // Near-Ultrasonic Fast (~18-20 kHz)
+                const waveform = ggwaveInstance.encode(text, protocolId, 10);
 
-                source.connect(processor);
-                processor.connect(ctx.destination);
-                document.getElementById('output').innerText = "Listening for ultrasonic signals...";
-            } catch (err) {
-                alert("Microphone permission required: " + err.message);
-            }
-        }
-    </script>
-</body>
-</html>
+                const buf = ctx.createBuffer(1, waveform.length, ctx.sampleRate);
+                buf.getChannelData(0).set(waveform);
+                
+                const source = ctx.
